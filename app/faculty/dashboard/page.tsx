@@ -45,7 +45,7 @@ import {
   Filter,
 } from "lucide-react"
 import { useRouter } from "next/navigation"
-import { useSession, signOut } from "next-auth/react"
+import { useAuth } from "@/contexts/auth-context"
 
 // Navigation items
 const facultyNavItems = [
@@ -234,24 +234,23 @@ const recentActivities = [
 ]
 
 export default function FacultyDashboard() {
-  const { data: session, status } = useSession()
-  const [activeView, setActiveView] = useState("dashboard")
-  const [selectedStudent, setSelectedStudent] = useState<any>(null)
-  const [analyticsFilter, setAnalyticsFilter] = useState("Section Level")
-  const router = useRouter()
+  const { user, loading, signOut } = useAuth();
+  const [activeView, setActiveView] = useState("dashboard");
+  const [selectedStudent, setSelectedStudent] = useState<any>(null);
+  const [analyticsFilter, setAnalyticsFilter] = useState("Section Level");
+  const router = useRouter();
 
   useEffect(() => {
-    if (status === "loading") return
-    if (!session) {
-      router.push("/login")
-      return
+    if (loading) return;
+    if (!user) {
+      router.push("/login");
     }
-    // If you want to check for user type, you can do so here if you store it in the session
-  }, [session, status, router])
+  }, [user, loading, router]);
 
-  const handleLogout = () => {
-    signOut({ callbackUrl: "/login" })
-  }
+  const handleLogout = async () => {
+    await signOut();
+    router.push("/login");
+  };
 
   // Dashboard Content
   const renderDashboard = () => (
@@ -926,7 +925,7 @@ export default function FacultyDashboard() {
                     {selectedStudent.section} • {selectedStudent.department} • {selectedStudent.year}
                   </p>
                   <div className="flex items-center gap-2 mt-1">
-                    {selectedStudent.badges.map((badge) => (
+                    {selectedStudent.badges.map((badge: string) => (
                       <Badge key={badge} variant="secondary">
                         {badge}
                       </Badge>
@@ -979,7 +978,7 @@ export default function FacultyDashboard() {
             <div>
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Unit Performance</h3>
               <div className="space-y-4">
-                {selectedStudent.unitPerformance.map((unit) => (
+                {selectedStudent.unitPerformance.map((unit: { unit: string; score: number; completed: number; total: number }) => (
                   <div key={unit.unit} className="p-4 bg-gray-50 rounded-lg">
                     <div className="flex items-center justify-between mb-2">
                       <span className="font-medium text-gray-900">{unit.unit}</span>
@@ -1000,7 +999,7 @@ export default function FacultyDashboard() {
             <div>
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Activity</h3>
               <div className="space-y-3">
-                {selectedStudent.recentActivity.map((activity, index) => (
+                {selectedStudent.recentActivity.map((activity: { quiz: string; date: string; score: number; time: string }, index: number) => (
                   <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                     <div>
                       <p className="font-medium text-gray-900">{activity.quiz}</p>
@@ -1119,7 +1118,7 @@ export default function FacultyDashboard() {
     }
   }
 
-  if (status === "loading") {
+  if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
         <div className="text-center">
@@ -1130,7 +1129,7 @@ export default function FacultyDashboard() {
     )
   }
 
-  if (!session) {
+  if (!user) {
     return null
   }
 
@@ -1229,7 +1228,7 @@ export default function FacultyDashboard() {
                 Settings
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={handleLogout}>
+              <DropdownMenuItem onClick={() => signOut()}>
                 <LogOut className="mr-2 h-4 w-4" />
                 Log out
               </DropdownMenuItem>

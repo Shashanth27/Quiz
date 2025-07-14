@@ -12,7 +12,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Loader2, Eye, EyeOff } from "lucide-react"
 import { createUser, saveUser, getUserByEmail } from "@/lib/user-management"
-import { signIn } from "next-auth/react"
+import { useAuth } from "@/contexts/auth-context";
+import { supabase } from "@/lib/supabase";
 
 export default function LoginPage() {
   const [activeTab, setActiveTab] = useState("student")
@@ -21,11 +22,14 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
+  const [isRegister, setIsRegister] = useState(false);
 
   const router = useRouter()
 
   const [googleLoading, setGoogleLoading] = useState(false)
   const [googleError, setGoogleError] = useState("")
+
+  const { signInWithGoogle, loading: authLoading } = useAuth();
 
   // Demo email/password login (local only)
   const handleSubmit = async (e: React.FormEvent) => {
@@ -58,18 +62,55 @@ export default function LoginPage() {
     }
   }
 
-  // Google OAuth login
-  const handleGoogleSignIn = async () => {
-    setGoogleLoading(true)
-    setGoogleError("")
+  // Supabase email/password registration and login
+  const handleManualAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setError("");
     try {
-      await signIn("google", { callbackUrl: "/student/dashboard" })
+      if (isRegister) {
+        // Registration
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+        });
+        if (error) {
+          setError(error.message);
+        } else {
+          setError("Check your email for a confirmation link.");
+        }
+      } else {
+        // Login
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+        if (error) {
+          setError(error.message);
+        } else if (data.session) {
+          // Optionally: redirect based on user type (fetch from your table if needed)
+          router.push(activeTab === "faculty" ? "/faculty/dashboard" : "/student/dashboard");
+        }
+      }
     } catch (err) {
-      setGoogleError("Google sign-in failed")
+      setError("Something went wrong. Please try again.");
     } finally {
-      setGoogleLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
+
+  // Google OAuth login (Supabase)
+  const handleGoogleSignIn = async () => {
+    setGoogleLoading(true);
+    setGoogleError("");
+    try {
+      await signInWithGoogle(activeTab); // Pass userType
+    } catch (err) {
+      setGoogleError("Google sign-in failed");
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
@@ -94,7 +135,7 @@ export default function LoginPage() {
               </TabsList>
 
               <TabsContent value="student" className="space-y-4">
-                <form onSubmit={handleSubmit} className="space-y-4">
+                <form onSubmit={handleManualAuth} className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="email">Email</Label>
                     <Input
@@ -137,9 +178,18 @@ export default function LoginPage() {
 
                   <Button type="submit" className="w-full" disabled={isLoading}>
                     {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    Sign in as Student
+                    {isRegister ? "Register as Student" : "Sign in as Student"}
                   </Button>
                 </form>
+                <div className="text-center">
+                  <button
+                    type="button"
+                    className="text-blue-600 hover:underline text-sm mt-2"
+                    onClick={() => setIsRegister((prev) => !prev)}
+                  >
+                    {isRegister ? "Already have an account? Login" : "Don't have an account? Register here"}
+                  </button>
+                </div>
 
                 <div className="relative">
                   <div className="absolute inset-0 flex items-center">
@@ -183,7 +233,7 @@ export default function LoginPage() {
               </TabsContent>
 
               <TabsContent value="faculty" className="space-y-4">
-                <form onSubmit={handleSubmit} className="space-y-4">
+                <form onSubmit={handleManualAuth} className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="faculty-email">Email</Label>
                     <Input
@@ -226,9 +276,18 @@ export default function LoginPage() {
 
                   <Button type="submit" className="w-full" disabled={isLoading}>
                     {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    Sign in as Faculty
+                    {isRegister ? "Register as Faculty" : "Sign in as Faculty"}
                   </Button>
                 </form>
+                <div className="text-center">
+                  <button
+                    type="button"
+                    className="text-blue-600 hover:underline text-sm mt-2"
+                    onClick={() => setIsRegister((prev) => !prev)}
+                  >
+                    {isRegister ? "Already have an account? Login" : "Don't have an account? Register here"}
+                  </button>
+                </div>
 
                 <div className="relative">
                   <div className="absolute inset-0 flex items-center">

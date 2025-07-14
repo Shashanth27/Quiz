@@ -24,8 +24,6 @@ import {
   TrendingDown,
   LogOut,
 } from "lucide-react"
-
-// Chart.js imports
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -37,8 +35,7 @@ import {
   Legend,
 } from "chart.js"
 import { Line } from "react-chartjs-2"
-
-import { useSession } from "next-auth/react"
+import { useAuth } from "@/contexts/auth-context"
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend)
 
@@ -77,34 +74,28 @@ const getInitials = (displayName: string) =>
     .toUpperCase()
 
 export default function StudentDashboard() {
-  const { data: session, status } = useSession()
-  const router = useRouter()
-  const [activeView, setActiveView] = useState("dashboard")
-  const [sortLevel, setSortLevel] = useState("College Level")
-  const [redirecting, setRedirecting] = useState(false)
+  const { user, loading, signOut } = useAuth();
+  const router = useRouter();
+  const [activeView, setActiveView] = useState("dashboard");
+  const [sortLevel, setSortLevel] = useState("College Level");
 
   useEffect(() => {
-    if (status === "loading" || redirecting) return
-    if (!session) {
-      setRedirecting(true)
-      router.push("/login")
-      return
+    if (loading) return;
+    if (!user) {
+      router.push("/login");
     }
-    // If you want to check for user type, you can do so here if you store it in the session
-  }, [session, status, router, redirecting])
+  }, [user, loading, router]);
 
-  // Show loading while authenticating or redirecting
-  if (status === "loading") {
+  if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-50">
         <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
       </div>
-    )
+    );
   }
 
-  // Don't render if user type doesn't match
-  if (!session) {
-    return null
+  if (!user) {
+    return null;
   }
 
   // Sample data (move here so it's always defined)
@@ -176,7 +167,7 @@ export default function StudentDashboard() {
     },
   }
 
-  const displayName = getDisplayName({ name: session.user?.name ?? undefined, email: session.user?.email ?? undefined })
+  const displayName = getDisplayName({ name: user.user_metadata?.full_name || user.user_metadata?.name, email: user.email })
   const firstName = getFirstName(displayName)
   const initials = getInitials(displayName)
 
@@ -601,7 +592,7 @@ export default function StudentDashboard() {
             </Avatar>
             <div>
               <h3 className="font-semibold">{displayName}</h3>
-              <p className="text-gray-600">{session.user?.email ?? ""}</p>
+              <p className="text-gray-600">{user.email}</p>
               <Badge variant="secondary">Student</Badge>
             </div>
           </div>
@@ -613,7 +604,7 @@ export default function StudentDashboard() {
             </div>
             <div>
               <label className="text-sm font-medium">Email</label>
-              <Input value={session.user?.email ?? ""} className="mt-1" />
+              <Input value={user.email} className="mt-1" />
             </div>
           </div>
 
@@ -713,7 +704,7 @@ export default function StudentDashboard() {
               <p className="text-sm text-gray-600">student</p>
             </div>
           </div>
-          <Button variant="outline" size="sm" onClick={() => router.push("/api/auth/signout")} className="w-full justify-start bg-transparent">
+          <Button variant="outline" size="sm" onClick={async () => { await signOut(); router.push("/login"); }} className="w-full justify-start bg-transparent">
             <LogOut className="w-4 h-4 mr-2" />
             Logout
           </Button>

@@ -2,24 +2,22 @@
 
 import { useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { useSession } from "next-auth/react"
+import { useAuth } from "@/contexts/auth-context"
 
 export default function HomePage() {
   const router = useRouter()
-  const { data: session, status } = useSession()
+  const { user, loading } = useAuth()
 
   useEffect(() => {
-    if (status === "loading") return
-    if (session?.user) {
-      // If you store user type in session, you can check here
-      // For now, redirect all users to student dashboard
+    if (loading) return
+    if (user) {
       router.push("/student/dashboard")
     } else {
       router.push("/login")
     }
-  }, [session, status, router])
+  }, [user, loading, router])
 
-  if (status === "loading") {
+  if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-50">
         <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>

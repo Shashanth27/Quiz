@@ -6,6 +6,15 @@ export interface User {
   picture?: string
   createdAt: Date
   lastLogin: Date
+  department?: string
+  section?: string
+  username?: string
+  profileComplete?: boolean
+}
+
+// Add function to check if profile is complete
+export function isProfileComplete(user: User): boolean {
+  return !!(user.department && user.section && user.username)
 }
 
 class UserManager {

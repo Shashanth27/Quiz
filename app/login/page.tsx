@@ -68,30 +68,37 @@ export default function LoginPage() {
     setIsLoading(true);
     setError("");
     try {
-      if (isRegister) {
-        // Registration
-        const { data, error } = await supabase.auth.signUp({
-          email,
-          password,
-        });
-        if (error) {
-          setError(error.message);
-        } else {
-          setError("Check your email for a confirmation link.");
-        }
-      } else {
-        // Login
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
-        if (error) {
-          setError(error.message);
-        } else if (data.session) {
-          // Optionally: redirect based on user type (fetch from your table if needed)
-          router.push(activeTab === "faculty" ? "/faculty/dashboard" : "/student/dashboard");
-        }
+      // Try to sign in
+      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      let userId;
+      if (signInData?.session) {
+        // Signed in successfully
+        userId = signInData.user?.id;
+      } else if (signInError) {
+        setError("Login failed: " + signInError.message);
+        setIsLoading(false);
+        return;
       }
+      // At this point, userId should be set
+      if (!userId) {
+        setError("User ID not found after login.");
+        setIsLoading(false);
+        return;
+      }
+      // Check students table for profile
+      const { data: studentProfile, error: studentError } = await supabase
+        .from('students')
+        .select('*')
+        .eq('id', userId)
+        .single();
+      if (studentProfile) {
+        router.push("/student/dashboard");
+        return;
+      }
+      setError("No student profile found. Please sign up first.");
     } catch (err) {
       setError("Something went wrong. Please try again.");
     } finally {
@@ -182,13 +189,7 @@ export default function LoginPage() {
                   </Button>
                 </form>
                 <div className="text-center">
-                  <button
-                    type="button"
-                    className="text-blue-600 hover:underline text-sm mt-2"
-                    onClick={() => setIsRegister((prev) => !prev)}
-                  >
-                    {isRegister ? "Already have an account? Login" : "Don't have an account? Register here"}
-                  </button>
+                  <Button variant="link" className="p-0 h-auto" onClick={() => router.push("/signup")}>Already have an account? Register here</Button>
                 </div>
 
                 <div className="relative">
@@ -280,13 +281,7 @@ export default function LoginPage() {
                   </Button>
                 </form>
                 <div className="text-center">
-                  <button
-                    type="button"
-                    className="text-blue-600 hover:underline text-sm mt-2"
-                    onClick={() => setIsRegister((prev) => !prev)}
-                  >
-                    {isRegister ? "Already have an account? Login" : "Don't have an account? Register here"}
-                  </button>
+                  <Button variant="link" className="p-0 h-auto" onClick={() => router.push("/signup")}>Already have an account? Register here</Button>
                 </div>
 
                 <div className="relative">

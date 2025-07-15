@@ -68,47 +68,37 @@ export default function LoginPage() {
     setIsLoading(true);
     setError("");
     try {
-      // Login
-      const { data, error } = await supabase.auth.signInWithPassword({
+      // Try to sign in
+      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
-      if (error) {
-        setError("Invalid email or password.");
-      } else if (data.session) {
-        // Get the authenticated user
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) {
-          setError("User not found after login.");
-          setIsLoading(false);
-          return;
-        }
-        // Check students table for profile
-        const { data: studentProfile } = await supabase
-          .from('students')
-          .select('*')
-          .eq('id', user.id)
-          .single();
-        if (studentProfile) {
-          router.push("/student/dashboard");
-        } else {
-          // Insert profile using user metadata
-          const { error: insertError } = await supabase.from('students').insert({
-            id: user.id,
-            email: user.email,
-            full_name: user.user_metadata.full_name,
-            department: user.user_metadata.department,
-            section: user.user_metadata.section,
-            username: user.user_metadata.username,
-          });
-          if (insertError) {
-            setError(insertError.message);
-            setIsLoading(false);
-            return;
-          }
-          router.push("/student/dashboard");
-        }
+      let userId;
+      if (signInData?.session) {
+        // Signed in successfully
+        userId = signInData.user?.id;
+      } else if (signInError) {
+        setError("Login failed: " + signInError.message);
+        setIsLoading(false);
+        return;
       }
+      // At this point, userId should be set
+      if (!userId) {
+        setError("User ID not found after login.");
+        setIsLoading(false);
+        return;
+      }
+      // Check students table for profile
+      const { data: studentProfile, error: studentError } = await supabase
+        .from('students')
+        .select('*')
+        .eq('id', userId)
+        .single();
+      if (studentProfile) {
+        router.push("/student/dashboard");
+        return;
+      }
+      setError("No student profile found. Please sign up first.");
     } catch (err) {
       setError("Something went wrong. Please try again.");
     } finally {

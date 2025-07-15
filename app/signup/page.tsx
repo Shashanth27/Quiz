@@ -122,19 +122,38 @@ export default function SignupPage() {
         }
         router.push('/student/dashboard');
       } else {
-        if (!formData.department || !formData.section || !formData.username) {
-          setError("Department, section, and username are required for faculty.")
-          setIsLoading(false)
-          return
+        if (!formData.department || !formData.section || !formData.username || !formData.email || !formData.password) {
+          setError("All fields are required for faculty.");
+          setIsLoading(false);
+          return;
         }
-        // Use the new RPC function for faculty profile creation
+        // Register with Supabase Auth
+        const { data, error } = await supabase.auth.signUp({
+          email: formData.email,
+          password: formData.password,
+          options: {
+            data: {
+              full_name: formData.name,
+              user_type: 'faculty',
+              username: formData.username,
+              department: formData.department,
+              section: formData.section,
+            }
+          }
+        });
+        if (error) {
+          setError(error.message);
+          setIsLoading(false);
+          return;
+        }
+        // Use the createFacultyProfile RPC function
         await createFacultyProfile({
           email: formData.email,
           department: formData.department,
           section: formData.section,
           username: formData.username,
         });
-        router.replace("/faculty/dashboard")
+        router.replace("/faculty/dashboard");
       }
     } catch (err: any) {
       console.error(err);

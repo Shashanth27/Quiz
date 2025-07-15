@@ -88,6 +88,22 @@ export default function LoginPage() {
         setIsLoading(false);
         return;
       }
+      if (activeTab === 'faculty') {
+        // Check faculty table for profile
+        const { data: facultyProfile, error: facultyError } = await supabase
+          .from('faculty')
+          .select('*')
+          .eq('id', userId)
+          .single();
+        if (facultyProfile) {
+          router.push("/faculty/dashboard");
+          return;
+        }
+        setError("No faculty profile found. Please sign up first.");
+        setIsLoading(false);
+        return;
+      }
+      // Student logic (unchanged)
       // Check students table for profile
       const { data: studentProfile, error: studentError } = await supabase
         .from('students')

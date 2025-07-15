@@ -68,28 +68,45 @@ export default function LoginPage() {
     setIsLoading(true);
     setError("");
     try {
-      if (isRegister) {
-        // Registration
-        const { data, error } = await supabase.auth.signUp({
-          email,
-          password,
-        });
-        if (error) {
-          setError(error.message);
-        } else {
-          setError("Check your email for a confirmation link.");
+      // Login
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      if (error) {
+        setError("Invalid email or password.");
+      } else if (data.session) {
+        // Get the authenticated user
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          setError("User not found after login.");
+          setIsLoading(false);
+          return;
         }
-      } else {
-        // Login
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
-        if (error) {
-          setError(error.message);
-        } else if (data.session) {
-          // Optionally: redirect based on user type (fetch from your table if needed)
-          router.push(activeTab === "faculty" ? "/faculty/dashboard" : "/student/dashboard");
+        // Check students table for profile
+        const { data: studentProfile } = await supabase
+          .from('students')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+        if (studentProfile) {
+          router.push("/student/dashboard");
+        } else {
+          // Insert profile using user metadata
+          const { error: insertError } = await supabase.from('students').insert({
+            id: user.id,
+            email: user.email,
+            full_name: user.user_metadata.full_name,
+            department: user.user_metadata.department,
+            section: user.user_metadata.section,
+            username: user.user_metadata.username,
+          });
+          if (insertError) {
+            setError(insertError.message);
+            setIsLoading(false);
+            return;
+          }
+          router.push("/student/dashboard");
         }
       }
     } catch (err) {
@@ -182,13 +199,7 @@ export default function LoginPage() {
                   </Button>
                 </form>
                 <div className="text-center">
-                  <button
-                    type="button"
-                    className="text-blue-600 hover:underline text-sm mt-2"
-                    onClick={() => setIsRegister((prev) => !prev)}
-                  >
-                    {isRegister ? "Already have an account? Login" : "Don't have an account? Register here"}
-                  </button>
+                  <Button variant="link" className="p-0 h-auto" onClick={() => router.push("/signup")}>Already have an account? Register here</Button>
                 </div>
 
                 <div className="relative">
@@ -280,13 +291,7 @@ export default function LoginPage() {
                   </Button>
                 </form>
                 <div className="text-center">
-                  <button
-                    type="button"
-                    className="text-blue-600 hover:underline text-sm mt-2"
-                    onClick={() => setIsRegister((prev) => !prev)}
-                  >
-                    {isRegister ? "Already have an account? Login" : "Don't have an account? Register here"}
-                  </button>
+                  <Button variant="link" className="p-0 h-auto" onClick={() => router.push("/signup")}>Already have an account? Register here</Button>
                 </div>
 
                 <div className="relative">

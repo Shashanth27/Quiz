@@ -2,8 +2,9 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
+import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -11,13 +12,16 @@ import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Loader2, Eye, EyeOff, BookOpen, ArrowLeft } from "lucide-react"
+import { supabase } from "@/lib/supabase"
+import { createStudentProfile, createFacultyProfile } from "@/lib/auth-service";
 
 export default function SignupPage() {
   const [formData, setFormData] = useState({
     name: "",
     email: "",
-    password: "",
-    confirmPassword: "",
+    class: "",
+    section: "",
+    username: "", // Added username field
   })
   const [userType, setUserType] = useState<"student" | "faculty">("student")
   const [showPassword, setShowPassword] = useState(false)
@@ -26,6 +30,49 @@ export default function SignupPage() {
   const [isLoading, setIsLoading] = useState(false)
 
   const router = useRouter()
+  const searchParams = useSearchParams()
+
+  // Check authentication and profile existence on mount
+  useEffect(() => {
+    const checkAuthAndProfile = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session && session.user) {
+        const userTypeParam = searchParams.get("userType") as "student" | "faculty" | null;
+        const userTypeToCheck = userTypeParam || userType;
+        let profileExists = false;
+        if (userTypeToCheck === "faculty") {
+          const { data: faculty } = await supabase
+            .from("faculty_profiles")
+            .select("id")
+            .eq("email", session.user.email)
+            .single();
+          profileExists = !!faculty;
+        } else {
+          const { data: student } = await supabase
+            .from("student_profiles")
+            .select("id")
+            .eq("email", session.user.email)
+            .single();
+          profileExists = !!student;
+        }
+        if (profileExists) {
+          // Redirect to dashboard
+          router.replace(userTypeToCheck === "faculty" ? "/faculty/dashboard" : "/student/dashboard");
+        }
+      }
+    };
+    checkAuthAndProfile();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Pre-fill from query params
+  useEffect(() => {
+    const email = searchParams.get("email") || ""
+    const name = searchParams.get("name") || ""
+    const userTypeParam = searchParams.get("userType") as "student" | "faculty" | null
+    setFormData((prev) => ({ ...prev, email, name }))
+    if (userTypeParam) setUserType(userTypeParam)
+  }, [searchParams])
 
   const handleInputChange = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
@@ -35,28 +82,67 @@ export default function SignupPage() {
     e.preventDefault()
     setError("")
     setIsLoading(true)
-
-    // Validation
-    if (formData.password !== formData.confirmPassword) {
-      setError("Passwords do not match")
-      setIsLoading(false)
-      return
-    }
-
-    if (formData.password.length < 6) {
-      setError("Password must be at least 6 characters long")
-      setIsLoading(false)
-      return
-    }
-
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 2000))
-
-      // Redirect to login page with success message
-      router.push("/login?message=Account created successfully! Please sign in.")
-    } catch (err) {
-      setError("An error occurred. Please try again.")
+      if (userType === "student") {
+        if (!formData.class || !formData.section || !formData.username || !formData.email || !formData.password) {
+          setError("All fields are required for students.")
+          setIsLoading(false)
+          return
+        }
+        // Register with Supabase Auth
+        const { data, error } = await supabase.auth.signUp({
+          email: formData.email,
+          password: formData.password,
+          options: {
+            data: {
+              full_name: formData.name,
+              user_type: 'student',
+              username: formData.username,
+              department: formData.class,
+              section: formData.section,
+            }
+          }
+        });
+        if (error) {
+          setError(error.message);
+          setIsLoading(false);
+          return;
+        }
+        // Use the create_student_profile RPC function
+        const { error: rpcError } = await supabase.rpc('create_student_profile', {
+          user_email: formData.email,
+          department: formData.class,
+          section: formData.section,
+          username: formData.username,
+        });
+        if (rpcError) {
+          setError(rpcError.message);
+          setIsLoading(false);
+          return;
+        }
+        router.push('/student/dashboard');
+      } else {
+        if (!formData.department || !formData.section || !formData.username) {
+          setError("Department, section, and username are required for faculty.")
+          setIsLoading(false)
+          return
+        }
+        // Use the new RPC function for faculty profile creation
+        await createFacultyProfile({
+          email: formData.email,
+          department: formData.department,
+          section: formData.section,
+          username: formData.username,
+        });
+        router.replace("/faculty/dashboard")
+      }
+    } catch (err: any) {
+      console.error(err);
+      if (err.message && err.message.toLowerCase().includes("duplicate")) {
+        setError("This email or username is already registered. Please log in instead.");
+      } else {
+        setError(err.message || "An error occurred. Please try again.");
+      }
     } finally {
       setIsLoading(false)
     }
@@ -174,6 +260,46 @@ export default function SignupPage() {
                       </Button>
                     </div>
                   </div>
+                  {userType === "student" && (
+                    <>
+                      <div className="space-y-2">
+                        <Label htmlFor="class">Class</Label>
+                        <Input
+                          id="class"
+                          type="text"
+                          placeholder="10A"
+                          value={formData.class}
+                          onChange={(e) => handleInputChange("class", e.target.value)}
+                          required={userType === "student"}
+                          className="h-11"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="section">Section</Label>
+                        <Input
+                          id="section"
+                          type="text"
+                          placeholder="A"
+                          value={formData.section}
+                          onChange={(e) => handleInputChange("section", e.target.value)}
+                          required={userType === "student"}
+                          className="h-11"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="username">Username</Label>
+                        <Input
+                          id="username"
+                          type="text"
+                          placeholder="johndoe123"
+                          value={formData.username}
+                          onChange={(e) => handleInputChange("username", e.target.value)}
+                          required={userType === "student"}
+                          className="h-11"
+                        />
+                      </div>
+                    </>
+                  )}
 
                   {error && (
                     <Alert variant="destructive">
@@ -273,6 +399,42 @@ export default function SignupPage() {
                         )}
                       </Button>
                     </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="faculty-department">Department</Label>
+                    <Input
+                      id="faculty-department"
+                      type="text"
+                      placeholder="Computer Science"
+                      value={formData.department}
+                      onChange={(e) => handleInputChange("department", e.target.value)}
+                      required={userType === "faculty"}
+                      className="h-11"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="faculty-section">Section</Label>
+                    <Input
+                      id="faculty-section"
+                      type="text"
+                      placeholder="A"
+                      value={formData.section}
+                      onChange={(e) => handleInputChange("section", e.target.value)}
+                      required={userType === "faculty"}
+                      className="h-11"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="faculty-username">Username</Label>
+                    <Input
+                      id="faculty-username"
+                      type="text"
+                      placeholder="janesmith123"
+                      value={formData.username}
+                      onChange={(e) => handleInputChange("username", e.target.value)}
+                      required={userType === "faculty"}
+                      className="h-11"
+                    />
                   </div>
 
                   {error && (

@@ -36,6 +36,7 @@ import {
 } from "chart.js"
 import { Line } from "react-chartjs-2"
 import { useAuth } from "@/contexts/auth-context"
+import { supabase } from "@/lib/supabase";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend)
 
@@ -78,6 +79,12 @@ export default function StudentDashboard() {
   const router = useRouter();
   const [activeView, setActiveView] = useState("dashboard");
   const [sortLevel, setSortLevel] = useState("College Level");
+  const [quizResults, setQuizResults] = useState([]);
+  const [loadingData, setLoadingData] = useState(true);
+  const [studentProfile, setStudentProfile] = useState(null);
+  const [classmates, setClassmates] = useState([]);
+  const [leaderboard, setLeaderboard] = useState([]);
+  const [analytics, setAnalytics] = useState({ averageScore: 0, totalQuizzes: 0, completed: 0 });
 
   useEffect(() => {
     if (loading) return;
@@ -86,7 +93,75 @@ export default function StudentDashboard() {
     }
   }, [user, loading, router]);
 
-  if (loading) {
+  useEffect(() => {
+    const fetchProfile = async () => {
+      if (!user) return;
+      const { data, error } = await supabase
+        .from('students')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+      setStudentProfile(data);
+    };
+    if (user) fetchProfile();
+  }, [user]);
+
+  useEffect(() => {
+    const fetchQuizResults = async () => {
+      setLoadingData(true);
+      if (!user) return;
+      const { data, error } = await supabase
+        .from('quiz_results')
+        .select('*, quizzes(*)')
+        .eq('student_id', user.id)
+        .order('taken_at', { ascending: false });
+      setQuizResults(data || []);
+      setLoadingData(false);
+    };
+    if (user) fetchQuizResults();
+  }, [user]);
+
+  useEffect(() => {
+    const fetchClassmatesAndLeaderboard = async () => {
+      if (!studentProfile) return;
+      // Fetch classmates (same department and section)
+      const { data: classmatesData } = await supabase
+        .from('students')
+        .select('*')
+        .eq('department', studentProfile.department)
+        .eq('section', studentProfile.section);
+      setClassmates(classmatesData || []);
+      // Fetch leaderboard (same department and section, sorted by score desc)
+      const { data: leaderboardData } = await supabase
+        .from('students')
+        .select('*')
+        .eq('department', studentProfile.department)
+        .eq('section', studentProfile.section)
+        .order('score', { ascending: false });
+      setLeaderboard(leaderboardData || []);
+    };
+    if (studentProfile) fetchClassmatesAndLeaderboard();
+  }, [studentProfile]);
+
+  useEffect(() => {
+    const fetchAnalytics = async () => {
+      if (!user) return;
+      const { data } = await supabase
+        .from('quiz_results')
+        .select('*')
+        .eq('student_id', user.id);
+      if (data) {
+        const completed = data.filter(q => q.status === 'completed').length;
+        const averageScore = data.length > 0
+          ? Math.round(data.filter(q => q.score !== null).reduce((sum, q) => sum + (q.score || 0), 0) / data.filter(q => q.score !== null).length)
+          : 0;
+        setAnalytics({ averageScore, totalQuizzes: data.length, completed });
+      }
+    };
+    if (user) fetchAnalytics();
+  }, [user]);
+
+  if (loading || loadingData) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-50">
         <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
@@ -98,41 +173,19 @@ export default function StudentDashboard() {
     return null;
   }
 
-  // Sample data (move here so it's always defined)
+  // Calculate stats from quizResults
   const stats = {
-    totalQuizzes: 18,
-    completed: 11,
-    averageScore: 76,
-    classRank: 13,
-  }
+    totalQuizzes: analytics.totalQuizzes,
+    completed: analytics.completed,
+    averageScore: analytics.averageScore,
+    classRank: leaderboard.findIndex(l => l.id === user.id) + 1 || 1
+  };
 
-  const recentQuizzes: QuizData[] = [
-    { id: 1, title: "Math Quiz 101", subject: "Mathematics", duration: "30 mins", date: "2023-07-20", score: 85, status: "completed", difficulty: "Easy", attempts: 2 },
-    { id: 2, title: "Science Test", subject: "Physics", duration: "45 mins", date: "2023-07-21", score: null, status: "available", difficulty: "Medium", attempts: 0 },
-    { id: 3, title: "History Review", subject: "History", duration: "20 mins", date: "2023-07-22", score: 92, status: "completed", difficulty: "Hard", attempts: 1 },
-    { id: 4, title: "English Composition", subject: "English", duration: "60 mins", date: "2023-07-23", score: null, status: "upcoming", difficulty: "Easy", attempts: 0 },
-  ]
+  // Use quizResults for recent quizzes
+  const recentQuizzes = quizResults.slice(0, 3);
 
-  const classmates: StudentData[] = [
-    { name: "John Doe", section: "Computer Science - Section A", score: 88, rank: 1, online: true, isCurrentUser: true },
-    { name: "Jane Smith", section: "Computer Science - Section A", score: 75, rank: 5, online: false },
-    { name: "Peter Parker", section: "Computer Science - Section B", score: 95, rank: 1, online: true },
-    { name: "Mary Jane", section: "Computer Science - Section A", score: 80, rank: 3, online: false },
-  ]
-
-  const leaderboard = [
-    { name: "John Doe", department: "Computer Science", section: "Section A", score: 92, quizzes: 10, average: 88, rank: 1 },
-    { name: "Jane Smith", department: "Computer Science", section: "Section A", score: 85, quizzes: 8, average: 82, rank: 2 },
-    { name: "Peter Parker", department: "Computer Science", section: "Section B", score: 98, quizzes: 12, average: 90, rank: 3 },
-    { name: "Mary Jane", department: "Computer Science", section: "Section A", score: 88, quizzes: 10, average: 85, rank: 4 },
-  ]
-
-  const subjectPerformance = [
-    { subject: "Mathematics", score: 88 },
-    { subject: "Physics", score: 92 },
-    { subject: "History", score: 85 },
-    { subject: "English", score: 90 },
-  ]
+  // Use classmates and leaderboard from Supabase
+  // ... update the UI in renderClassmates and renderLeaderboard to use classmates and leaderboard arrays ...
 
   // Chart data
   const chartData = {
@@ -282,17 +335,17 @@ export default function StudentDashboard() {
                 </tr>
               </thead>
               <tbody>
-                {recentQuizzes.slice(0, 3).map((quiz) => (
+                {recentQuizzes.map((quiz) => (
                   <tr key={quiz.id} className="border-b hover:bg-gray-50">
-                    <td className="py-3 px-4 font-medium">{quiz.title}</td>
-                    <td className="py-3 px-4">{quiz.subject}</td>
+                    <td className="py-3 px-4 font-medium">{quiz.quizzes.title}</td>
+                    <td className="py-3 px-4">{quiz.quizzes.subject}</td>
                     <td className="py-3 px-4">
                       <div className="flex items-center">
                         <Clock className="w-4 h-4 mr-1 text-gray-400" />
-                        {quiz.duration}
+                        {quiz.quizzes.duration}
                       </div>
                     </td>
-                    <td className="py-3 px-4">{quiz.date}</td>
+                    <td className="py-3 px-4">{quiz.taken_at}</td>
                     <td className="py-3 px-4">
                       {quiz.score ? (
                         <span className="font-semibold">{quiz.score}%</span>
@@ -362,15 +415,35 @@ export default function StudentDashboard() {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {subjectPerformance.map((subject) => (
-              <div key={subject.subject} className="space-y-2">
-                <div className="flex justify-between">
-                  <span className="font-medium">{subject.subject}</span>
-                  <span className="font-semibold">{subject.score}%</span>
-                </div>
-                <Progress value={subject.score} className="h-2" />
+            {/* This section will be updated to use real data from Supabase */}
+            <div key="Mathematics" className="space-y-2">
+              <div className="flex justify-between">
+                <span className="font-medium">Mathematics</span>
+                <span className="font-semibold">88%</span>
               </div>
-            ))}
+              <Progress value={88} className="h-2" />
+            </div>
+            <div key="Physics" className="space-y-2">
+              <div className="flex justify-between">
+                <span className="font-medium">Physics</span>
+                <span className="font-semibold">92%</span>
+              </div>
+              <Progress value={92} className="h-2" />
+            </div>
+            <div key="History" className="space-y-2">
+              <div className="flex justify-between">
+                <span className="font-medium">History</span>
+                <span className="font-semibold">85%</span>
+              </div>
+              <Progress value={85} className="h-2" />
+            </div>
+            <div key="English" className="space-y-2">
+              <div className="flex justify-between">
+                <span className="font-medium">English</span>
+                <span className="font-semibold">90%</span>
+              </div>
+              <Progress value={90} className="h-2" />
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -385,33 +458,33 @@ export default function StudentDashboard() {
       </div>
 
       <div className="grid gap-4">
-        {recentQuizzes.map((quiz) => (
+        {quizResults.map((quiz) => (
           <Card key={quiz.id} className="hover:shadow-md transition-shadow">
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-2">
-                    <h3 className="font-semibold text-lg">{quiz.title}</h3>
+                    <h3 className="font-semibold text-lg">{quiz.quizzes.title}</h3>
                     <Badge
                       variant="outline"
                       className={
-                        quiz.difficulty === "Easy"
+                        quiz.quizzes.difficulty === "Easy"
                           ? "border-green-200 text-green-700"
-                          : quiz.difficulty === "Medium"
+                          : quiz.quizzes.difficulty === "Medium"
                             ? "border-yellow-200 text-yellow-700"
                             : "border-red-200 text-red-700"
                       }
                     >
-                      {quiz.difficulty}
+                      {quiz.quizzes.difficulty}
                     </Badge>
                   </div>
                   <div className="flex items-center gap-4 text-sm text-gray-600">
-                    <span>{quiz.subject}</span>
+                    <span>{quiz.quizzes.subject}</span>
                     <div className="flex items-center">
                       <Clock className="w-4 h-4 mr-1" />
-                      {quiz.duration}
+                      {quiz.quizzes.duration}
                     </div>
-                    <span>{quiz.date}</span>
+                    <span>{quiz.taken_at}</span>
                     <span>{quiz.attempts} attempts</span>
                   </div>
                 </div>
@@ -431,6 +504,9 @@ export default function StudentDashboard() {
                     </Badge>
                     {quiz.score && <div className="text-lg font-bold mt-1">{quiz.score}%</div>}
                   </div>
+                  <Button variant="outline" size="sm" onClick={() => router.push(`/quiz/join/${quiz.quizzes.code || quiz.quizzes.id}`)} disabled={quiz.status !== 'available'}>
+                    Attend Quiz
+                  </Button>
                   <Button variant="outline" size="sm">
                     <Eye className="w-4 h-4" />
                   </Button>
@@ -459,9 +535,9 @@ export default function StudentDashboard() {
           <div className="space-y-3">
             {classmates.map((student, index) => (
               <div
-                key={index}
+                key={student.id}
                 className={`flex items-center justify-between p-4 rounded-lg ${
-                  student.isCurrentUser ? "bg-blue-50 border border-blue-200" : "bg-gray-50"
+                  student.id === user.id ? "bg-blue-50 border border-blue-200" : "bg-gray-50"
                 }`}
               >
                 <div className="flex items-center gap-3">
@@ -469,9 +545,10 @@ export default function StudentDashboard() {
                     <Avatar className="w-10 h-10">
                       <AvatarFallback className="bg-blue-100 text-blue-600">
                         {student.name
-                          .split(" ")
-                          .map((n) => n[0])
-                          .join("")}
+                          ? student.name.split(" ").map((n) => n[0]).join("").toUpperCase()
+                          : student.email
+                            ? student.email[0].toUpperCase()
+                            : "NA"}
                       </AvatarFallback>
                     </Avatar>
                     <div
@@ -483,7 +560,7 @@ export default function StudentDashboard() {
                   <div>
                     <div className="font-medium">
                       {student.name}
-                      {student.isCurrentUser && <span className="text-blue-600 ml-1">(You)</span>}
+                      {student.id === user.id && <span className="text-blue-600 ml-1">(You)</span>}
                     </div>
                     <div className="text-sm text-gray-600">{student.section}</div>
                   </div>
@@ -534,25 +611,25 @@ export default function StudentDashboard() {
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            {leaderboard.map((student) => (
+            {leaderboard.map((student, index) => (
               <div
-                key={student.rank}
+                key={student.id}
                 className={`flex items-center justify-between p-4 rounded-lg ${
-                  student.name === "Google User" ? "bg-blue-50 border-l-4 border-blue-500" : "bg-gray-50"
+                  student.id === user.id ? "bg-blue-50 border-l-4 border-blue-500" : "bg-gray-50"
                 }`}
               >
                 <div className="flex items-center gap-4">
                   <div
                     className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${
-                      student.rank <= 3 ? "bg-yellow-500 text-white" : "bg-gray-200 text-gray-700"
+                      index < 3 ? "bg-yellow-500 text-white" : "bg-gray-200 text-gray-700"
                     }`}
                   >
-                    {student.rank <= 3 ? <Trophy className="w-4 h-4" /> : student.rank}
+                    {index < 3 ? <Trophy className="w-4 h-4" /> : index + 1}
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
                       <span className="font-medium">{student.name}</span>
-                      {student.rank <= 3 && <Star className="w-4 h-4 text-yellow-500" />}
+                      {index < 3 && <Star className="w-4 h-4 text-yellow-500" />}
                     </div>
                     <div className="text-sm text-gray-600">
                       {student.department} • {student.section}

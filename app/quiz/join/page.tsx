@@ -10,14 +10,15 @@ import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Loader2, Users, BookOpen } from "lucide-react"
 import { useRouter } from "next/navigation"
-import { useSession } from "next-auth/react"
+import { useAuth } from "@/contexts/auth-context";
+import { supabase } from "@/lib/supabase";
 
 export default function JoinQuizPage() {
   const [quizCode, setQuizCode] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
   const router = useRouter()
-  const { data: session, status } = useSession()
+  const { user, loading } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -27,22 +28,22 @@ export default function JoinQuizPage() {
     try {
       if (!quizCode.trim()) {
         setError("Please enter a quiz code")
+        setIsLoading(false)
         return
       }
-
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1500))
-
-      // Check if quiz code exists (demo codes)
-      const validCodes = ["MATH101", "PHYS201", "CHEM301", "BIO401"]
-
-      if (!validCodes.includes(quizCode.toUpperCase())) {
-        setError("Invalid quiz code. Please check with your instructor.")
-        return
+      // Check if quiz code exists in Supabase
+      const { data, error } = await supabase
+        .from('quizzes')
+        .select('code')
+        .eq('code', quizCode.trim())
+        .single();
+      if (!data || !data.code) {
+        setError("Invalid quiz code. Please check with your instructor.");
+        setIsLoading(false);
+        return;
       }
-
       // Redirect to quiz taking page
-      router.push(`/quiz/take/${quizCode.toUpperCase()}`)
+      router.push(`/quiz/take/${quizCode.trim()}`);
     } catch (error) {
       setError("Failed to join quiz. Please try again.")
     } finally {
@@ -50,10 +51,10 @@ export default function JoinQuizPage() {
     }
   }
 
-  if (status === "loading") return null
-  if (!session) {
-    router.push("/login")
-    return null
+  if (loading) return null;
+  if (!user) {
+    router.push("/login");
+    return null;
   }
 
   return (

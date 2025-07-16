@@ -455,6 +455,13 @@ export default function StudentDashboard() {
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Quizzes</h1>
         <p className="text-gray-600">All your quiz activities</p>
+        <Button
+          variant="primary"
+          className="mt-4"
+          onClick={() => router.push('/quiz/join')}
+        >
+          Attend Quiz
+        </Button>
       </div>
 
       <div className="grid gap-4">
@@ -504,9 +511,6 @@ export default function StudentDashboard() {
                     </Badge>
                     {quiz.score && <div className="text-lg font-bold mt-1">{quiz.score}%</div>}
                   </div>
-                  <Button variant="outline" size="sm" onClick={() => router.push(`/quiz/join/${quiz.quizzes.code || quiz.quizzes.id}`)} disabled={quiz.status !== 'available'}>
-                    Attend Quiz
-                  </Button>
                   <Button variant="outline" size="sm">
                     <Eye className="w-4 h-4" />
                   </Button>

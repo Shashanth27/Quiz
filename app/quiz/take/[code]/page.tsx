@@ -1,4 +1,4 @@
-"use client"
+image.png"use client"
 
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
@@ -10,7 +10,8 @@ import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Clock, CheckCircle, AlertCircle, BookOpen } from "lucide-react"
 import { useRouter, useParams } from "next/navigation"
-import { useSession } from "next-auth/react"
+import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/contexts/auth-context";
 
 interface Question {
   id: number
@@ -29,100 +30,48 @@ interface Quiz {
 }
 
 export default function TakeQuizPage() {
-  const params = useParams()
-  const router = useRouter()
-  const { data: session, status } = useSession()
-  const [quiz, setQuiz] = useState<Quiz | null>(null)
-  const [currentQuestion, setCurrentQuestion] = useState(0)
-  const [answers, setAnswers] = useState<{ [key: number]: number }>({})
-  const [timeLeft, setTimeLeft] = useState(0)
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [error, setError] = useState("")
+  const params = useParams();
+  const router = useRouter();
+  const { user, loading } = useAuth();
+  const [quiz, setQuiz] = useState<any>(null);
+  const [currentQuestion, setCurrentQuestion] = useState(0);
+  const [answers, setAnswers] = useState<{ [key: number]: number }>({});
+  const [timeLeft, setTimeLeft] = useState(0);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState("");
 
-  const quizCode = params.code as string
+  const quizCode = params.code as string;
 
   useEffect(() => {
-    if (status === "loading") return
-    if (!session) {
-      router.push("/login")
-      return
+    if (loading) return;
+    if (!user) {
+      router.push("/login");
+      return;
     }
-    loadQuiz()
-  }, [session, status, quizCode])
+    const fetchQuiz = async () => {
+      const { data, error } = await supabase
+        .from("quizzes")
+        .select("*")
+        .eq("code", quizCode)
+        .single();
+      if (data) {
+        setQuiz(data);
+        setTimeLeft(data.timeLimit || 1800);
+      } else {
+        setError("Quiz not found");
+      }
+    };
+    if (quizCode) fetchQuiz();
+  }, [user, loading, quizCode, router]);
 
   useEffect(() => {
     if (timeLeft > 0) {
-      const timer = setTimeout(() => setTimeLeft(timeLeft - 1), 1000)
-      return () => clearTimeout(timer)
+      const timer = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
+      return () => clearTimeout(timer);
     } else if (timeLeft === 0 && quiz) {
-      handleSubmit()
+      handleSubmit();
     }
-  }, [timeLeft])
-
-  const loadQuiz = () => {
-    // Mock quiz data based on code
-    const quizzes: { [key: string]: Quiz } = {
-      MATH101: {
-        code: "MATH101",
-        title: "Basic Algebra Quiz",
-        description: "Test your knowledge of basic algebraic concepts",
-        timeLimit: 1800, // 30 minutes
-        questions: [
-          {
-            id: 1,
-            question: "What is the value of x in the equation 2x + 5 = 13?",
-            options: ["3", "4", "5", "6"],
-            correctAnswer: 1,
-            type: "multiple-choice",
-          },
-          {
-            id: 2,
-            question: "Is the equation y = 2x + 3 a linear equation?",
-            options: ["True", "False"],
-            correctAnswer: 0,
-            type: "true-false",
-          },
-          {
-            id: 3,
-            question: "What is the slope of the line y = -3x + 7?",
-            options: ["-3", "3", "7", "-7"],
-            correctAnswer: 0,
-            type: "multiple-choice",
-          },
-        ],
-      },
-      PHYS201: {
-        code: "PHYS201",
-        title: "Physics Fundamentals",
-        description: "Basic physics concepts and principles",
-        timeLimit: 2400, // 40 minutes
-        questions: [
-          {
-            id: 1,
-            question: "What is the acceleration due to gravity on Earth?",
-            options: ["9.8 m/s²", "10 m/s²", "8.9 m/s²", "11 m/s²"],
-            correctAnswer: 0,
-            type: "multiple-choice",
-          },
-          {
-            id: 2,
-            question: "Is energy conserved in all physical processes?",
-            options: ["True", "False"],
-            correctAnswer: 0,
-            type: "true-false",
-          },
-        ],
-      },
-    }
-
-    const selectedQuiz = quizzes[quizCode]
-    if (selectedQuiz) {
-      setQuiz(selectedQuiz)
-      setTimeLeft(selectedQuiz.timeLimit)
-    } else {
-      setError("Quiz not found")
-    }
-  }
+  }, [timeLeft]);
 
   const handleAnswerChange = (questionId: number, answerIndex: number) => {
     setAnswers({
@@ -144,7 +93,7 @@ export default function TakeQuizPage() {
   }
 
   const handleSubmit = async () => {
-    if (!quiz || !session) return
+    if (!quiz || !user) return
 
     setIsSubmitting(true)
 
@@ -163,9 +112,9 @@ export default function TakeQuizPage() {
       // Save result
       const result = {
         id: `result_${Date.now()}`,
-        studentId: (session.user as typeof session.user & { id?: string }).id ?? "",
-        studentName: session.user?.name,
-        studentEmail: session.user?.email,
+        studentId: user?.id,
+        studentName: user?.name,
+        studentEmail: user?.email,
         quizTitle: quiz.title,
         quizCode: quiz.code,
         score,
@@ -202,7 +151,7 @@ export default function TakeQuizPage() {
     return "text-red-600" // < 1 minute
   }
 
-  if (!session) {
+  if (!user) {
     return null
   }
 
